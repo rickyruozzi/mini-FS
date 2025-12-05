@@ -132,6 +132,23 @@ block_t block_alloc(ui8 *blockBitmap, ui32 totalBlocks){
     }
 }
 
+int free_block(ui8 *blockBitmap, block_t blockNum){
+    ui8 byte = blockBitmap[blockNum/8];
+    ui8 bit = (byte >> (blockNum%8)) & 1; //ottengo il bit corrispondente al blocco
+    if(bit==1){
+        blockBitmap[blockNum/8] = byte & ~(1 << (blockNum%8)); 
+        /*
+        l'operazione (1 << (blockNum%8)) crea una maschera con il bit corrispondente al blocco impostato a 1,
+        l'operazione NOT (~) inverte la maschera, impostando quel bit a 0 e tutti gli altri a 1,
+        l'operazione AND (&) tra byte e la maschera aggiornata imposta il bit corrispondente al blocco a 0, 
+        indicando che il blocco è ora libero.
+        */
+        return 0; //ritorno 0 per indicare che il blocco è stato liberato con successo
+    } else {
+        return -1; //ritorno -1 per indicare che il blocco era già libero
+    }
+}
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
