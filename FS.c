@@ -191,6 +191,14 @@ inode_t inode_alloc(struct inode *inodeTable, ui32 inodecount){
     return -1; //nessun inode disponibile
 }
 
+int free_inode(struct inode *inodeTable, inode_t inodeNum){
+    if(inodeTable[inodeNum].isUsed==1){
+        inodeTable[inodeNum].isUsed=0;
+        return 0;
+    }
+    return -1; //l'inode era già libero
+}
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
