@@ -159,6 +159,15 @@ int read_block(FILE *F, block_t block_num, void *buffer){
     return 0; 
 }
 
+int write_block(FILE *F, block_t block_num, void *buffer){
+    fseek(F, block_num * BLOCK_SIZE, SEEK_SET); //spostiamo la testina di scrittura nel blocco in cui vogliamo scrivere
+    size_t result = fwrite(buffer, BLOCK_SIZE, 1, F); //scriviamo il contenuto del buffer nel blocco 
+    if(result !=1){
+        return -1; //errore nella scrittura del blocco
+    }
+    return 0; 
+}
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
