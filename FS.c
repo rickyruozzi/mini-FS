@@ -116,6 +116,22 @@ void printInodeTable(struct inode *inodeTable, ui32 inodeCount){
     }
 }
 
+block_t block_alloc(ui8 *blockBitmap, ui32 totalBlocks){
+    for(ui32 i=0; i<totalBlocks; i++){
+        ui8 byte = blockBitmap[i/8];
+        ui8 bit = (byte >> (i%8)) & 1;
+        if(bit==0){
+            blockBitmap[i/8] = byte | (1 << (i%8)); //setto il bit a 1 per indicare che il blocco è occupato
+            /*
+            i è l'indice del blocco corrente, byte è il byte corrente della bitmap (ottenuto con i/8),
+            l'operazione (1<<(i%8)) sposta il bit 1 a sinistra di (i%8) posizioni per creare una maschera, 
+            l'operazioone OR (|) tra byte e la maschera imposta il bit corrispondente a 1, indicando che il blocco è ora allocato. 
+            */
+            return i; //ritorno il blocco allocato
+        }
+    }
+}
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
