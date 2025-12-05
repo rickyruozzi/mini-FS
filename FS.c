@@ -176,6 +176,21 @@ int write_block(FILE *F, block_t block_num, void *buffer){
     return 0; 
 }
 
+inode_t inode_alloc(struct inode *inodeTable, ui32 inodecount){
+    for(ui32 i=0; i<inodecount; i++){
+        if(inodeTable[i].isUsed==0){ //se l'inode non è in uso
+            inodeTable[i].isUsed=1; //lo segniamo come in uso
+            inodeTable[i].size=0; //inizializziamo la dimensione del file a 0
+            inodeTable[i].created_at = (ui32)time(NULL); //impostiamo il timestamp di creazione
+            inodeTable[i].modified_at = (ui32)time(NULL); //impostiamo
+            inodeTable[i].indirectBlock = 0; //inizializziamo il puntatore al blocco indiretto a 0
+            memset(inodeTable[i].directBlocks, 0, INODE_DIRECT * sizeof(ui32)); //inizializziamo i blocchi diretti legati al file a 0
+            return i; //ritorniamo il numero dell'inode allocato
+        }
+    }
+    return -1; //nessun inode disponibile
+}
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
