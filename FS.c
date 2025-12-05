@@ -149,6 +149,16 @@ int free_block(ui8 *blockBitmap, block_t blockNum){
     }
 }
 
+int read_block(FILE *F, block_t block_num, void *buffer){
+    fseek(F, block_num * BLOCK_SIZE, SEEK_SET); //spostiamo la testina di lettura al blocco desiderato
+    size_t result = fread(buffer, BLOCK_SIZE, 1, F); //inseriamo in result il numero di blocchi che abbiamo letto 
+    //abbiamo inoltre inserito nel buffer che abbiamo passato il contenuto del blocco letto con fread
+    if (result != 1) {
+        return -1; //errore nella lettura del blocco
+    }
+    return 0; 
+}
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
