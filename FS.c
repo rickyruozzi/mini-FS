@@ -1,5 +1,4 @@
 #include "./FS.h"
-#include <stdlib.h>
 
 // Function prototypes
 void printBitmap(ui8 *blockBitmap, ui32 totalBlocks);
