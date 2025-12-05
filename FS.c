@@ -1,0 +1,134 @@
+#include "./FS.h"
+
+int init_fs(const char *img, ui32 totalBlocks){
+    FILE* F=fopen(img,"wb");
+    if (F==NULL){
+        printf("Errore nella creazione dell'immagine del file system.\n");
+        return -1; //errore nell'apertura del file
+    }
+    //inizializzazione superblocco
+    struct superblock *sb = malloc(sizeof(struct superblock));
+    sb->magic = FS_MAGIC;
+    sb->block_size = BLOCK_SIZE;
+    sb->total_blocks = totalBlocks;
+    sb->inode_table_blocks = (MAX_INODES * sizeof(struct inode) + BLOCK_SIZE -1) / BLOCK_SIZE;
+    /*calcolo del numero di blocchi da cui è composta la tabela degli inodes
+    (numero di nodi * dimensione di un inode + blocco separatore -1)/dimensione dei blocchi */
+    sb->inode_count = MAX_INODES; //massimo numero di inode
+    sb->free_block_bitmap_start = 1; //superblocco occupa il blocco 0
+    sb->inode_table_start = sb->free_block_bitmap_start + (totalBlocks + 7) / 8 / BLOCK_SIZE + 1;
+    /*calcolo del blocco di inizio della tabella degli inode*/
+    sb->data_start = sb->inode_table_start + sb->inode_table_blocks;
+    //trova il primo blocco dedicato ai dati dopo la tabella degli inode
+    //scrittura del superblocco
+    fwrite(sb, sizeof(struct superblock), 1, F);
+    free(sb); //scriviamo il superblocco nel file e liberiamo la memoria
+
+    //inizializziamo la bitmap dei blocchi liberi 
+    ui32 bitmapSize = (totalBlocks + 7) / 8; 
+     /*dimensione della bitmap data dal numero totale di blocchi arrotondato al blocco superiore,
+     diviso per il numero di bit nel byte */
+    ui8 *blockBitmap = malloc(bitmapSize); //la dimensione della bitmap in byte
+    fseek(F, BLOCK_SIZE * sb->free_block_bitmap_start, SEEK_SET); //spostiamo il puntatore di scrittura all'inizio della bitmap
+    memset(blockBitmap, 0, bitmapSize); 
+    //memset inizializza la bitmap a 0 (tutti i blocchi liberi)
+    fwrite(blockBitmap, bitmapSize, 1, F);
+    //scrive la bitmap dei blocchi liberi nel file
+    free(blockBitmap); //libera lo spazio della bitmap in RAM
+
+    //inizializziamo la tabella degli inode 
+    struct inode *inodeTable = malloc(sb->inode_count * sizeof(struct inode));
+    //allochiamo lo spazio per inode_count inode nella tabella
+    memset(inodeTable, 0, sb->inode_count * sizeof(struct inode)); //inizializziamo tutti gli inode a zero
+    fseek(F, BLOCK_SIZE * sb->inode_table_start, SEEK_SET); //spostiamo il puntatore di scrittura all'inizio della tabella degli inode
+    fwrite(inodeTable, sb->inode_count * sizeof(struct inode), 1, F); //scriviamo la tabella degli inode inizializzata nel file
+    free(inodeTable); //liberiamo lo spazio della tabella degli inode in RAM
+
+    fclose(F); //chiudiamo il file
+    return 0; //il valore di ritorno 0 indica che il processo è andato a buon fine
+}
+
+int open_fs(const char *img){
+    FILE* F=open(img, "wb");
+    if (F==NULL){
+        printf("Errore nell'apertura dell'immagine del file system.\n");
+        return -1; //errore nell'apertura del file
+    }
+    struct superblock *sb = malloc(sizeof(struct superblock));
+    fread(&(*sb), sizeof(struct superblock),1,F); //leggiamo e inseriamo il superblock nel buffer sb
+    if (sb->magic!=FS_MAGIC){
+        printf("Errore: immagine del file system non valida.\n");
+        fclose(F);
+        return -1; //errore: immagine del file system non valida
+    }
+    ui32 bitmapSize = (sb->total_blocks + 7) / 8; 
+    ui8 *blockBitmap = malloc(bitmapSize); 
+    fseek(F, BLOCK_SIZE * sb->free_block_bitmap_start, SEEK_SET); //spostiamo la testina per leggere all'inizio della bitmap
+    fread(blockBitmap, bitmapSize, 1, F); //leggiamo la bitmap dei blocchi liberi nel buffer blockBitmap
+    
+
+    struct inode *inodeTable = malloc(sb->inode_count * sizeof(struct inode));
+    fseek(F, BLOCK_SIZE * sb->inode_table_start, SEEK_SET); //spostiamo la testina per leggere all'inizio della tabella degli inode
+    fread(inodeTable, sb->inode_count * sizeof(struct inode), 1, F); //leggiamo la tabella degli inode nel buffer inodeTable
+   
+    free(sb);
+    
+    printBitmap(blockBitmap, sb->total_blocks);
+    printInodeTable(inodeTable, sb->inode_count);
+
+    free(blockBitmap);
+    free(inodeTable);
+    fclose(F);
+    return 0;
+}
+
+void printBitmap(ui8 *blockBitmap, ui32 totalBlocks){
+    printf("bitmap dei blocchi liberi:\n");
+    for(ui32 i=0; i<totalBlocks; i++){ //per ogni blocco (4 kb)
+        ui8 byte = blockBitmap[i/8]; //prendiamo il byte corrispondente
+        ui8 bit = (byte >> (i%8))&1; //prendiamo il bit corrispondente
+        // shiftiamo il byte di i%8 posizioni a destra e facciamo l'AND con 1 per ottenere il bit
+        printf("Blocco %u: %s\n", i, bit ? "Occupato" : "Libero");  //1 - bloccato, 0 - libero
+        //stampa lo stato del blocco
+    }
+}
+
+void printInodeTable(struct inode *inodeTable, ui32 inodeCount){
+    printf("Tabella degli inode: \n"); //stampa la tabella degli inode
+    for(ui32 i=0; i<inodeCount; i++){
+        struct inode currentInode = inodeTable[i]; //prende l'elemento i-esimo dalla tabella
+        if(currentInode.isUsed){ //se il nodo è in uso
+            printf("Inode %u:\n", i); //stampa il numero di inode
+            printf("    Dimensione del file: %u byte\n", currentInode.size); //stampa la dimensione del file
+            printf("    Blocchi diretti: "); //stampa i blocchi diretti con il ciclo che segue
+            for(ui32 j=0; j<INODE_DIRECT; j++){
+                if(currentInode.directBlocks[j] != 0){ //se il blocco diretto non è 0 allora stampo il contenuto
+                    printf("%u ", currentInode.directBlocks[j]);
+                }
+            }
+            printf("\n");
+            if(currentInode.indirectBlock != 0){
+                printf("  Blocco indiretto: %u\n", currentInode.indirectBlock); //stampo il blocco indiretto se non è 0
+            }
+            printf("  Creato il: %u\n", currentInode.created_at); //stampo il timestamp di creazione
+            printf("  Ultima modifica: %u\n", currentInode.modified_at); //stampo il timestamp dell'ultima modifica
+        }
+    }
+}
+
+int main() {
+    // Test della creazione e apertura del file system
+    printf("Inizializzazione del file system...\n");
+    if (init_fs("test.img", MAX_BLOCKS) == 0) {
+        printf("File system inizializzato con successo.\n");
+        printf("Apertura e lettura del file system...\n");
+        if (open_fs("test.img") == 0) {
+            printf("File system aperto e letto con successo.\n");
+        } else {
+            printf("Errore nell'apertura del file system.\n");
+        }
+    } else {
+        printf("Errore nell'inizializzazione del file system.\n");
+    }
+    return 0;
+}
