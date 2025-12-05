@@ -52,7 +52,7 @@ int init_fs(const char *img, ui32 totalBlocks){
     return 0; //il valore di ritorno 0 indica che il processo è andato a buon fine
 }
 
-int open_fs(const char *img){
+int open_fs(const char *img, bool printBlocks, bool printInodes){
     FILE* F=fopen(img, "rb");
     if (F==NULL){
         printf("Errore nell'apertura dell'immagine del file system.\n");
@@ -77,9 +77,13 @@ int open_fs(const char *img){
    
     free(sb);
     
-    printBitmap(blockBitmap, sb->total_blocks);
-    printInodeTable(inodeTable, sb->inode_count);
-
+    
+    if(printBlocks==true){
+        printBitmap(blockBitmap, sb->total_blocks);
+    }
+    if(printInodes==true){
+        printInodeTable(inodeTable, sb->inode_count);
+    }
     free(blockBitmap);
     free(inodeTable);
     fclose(F);
@@ -202,7 +206,7 @@ int main() {
         }
 
         printf("Apertura e lettura del file system...\n");
-        if (open_fs("test.img") == 0) {
+        if (open_fs("test.img", false, false) == 0) {
             printf("File system aperto e letto con successo.\n");
         } else {
             printf("Errore nell'apertura del file system.\n");

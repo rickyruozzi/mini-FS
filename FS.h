@@ -9,6 +9,7 @@
 #include <unistd.h> 
 #include <sys/types.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #define FS_MAGIC 0xF5F15F5F //magic number del file system
 #define BLOCK_SIZE 4096 //dimensione di un blocco di byte (4 KB)
