@@ -1,4 +1,9 @@
 #include "./FS.h"
+#include <stdlib.h>
+
+// Function prototypes
+void printBitmap(ui8 *blockBitmap, ui32 totalBlocks);
+void printInodeTable(struct inode *inodeTable, ui32 inodeCount);
 
 int init_fs(const char *img, ui32 totalBlocks){
     FILE* F=fopen(img,"wb");
@@ -49,7 +54,7 @@ int init_fs(const char *img, ui32 totalBlocks){
 }
 
 int open_fs(const char *img){
-    FILE* F=open(img, "wb");
+    FILE* F=fopen(img, "rb");
     if (F==NULL){
         printf("Errore nell'apertura dell'immagine del file system.\n");
         return -1; //errore nell'apertura del file
@@ -173,6 +178,30 @@ int main() {
     printf("Inizializzazione del file system...\n");
     if (init_fs("test.img", MAX_BLOCKS) == 0) {
         printf("File system inizializzato con successo.\n");
+
+        // Test semplice di scrittura e lettura blocco
+        FILE *F = fopen("test.img", "r+b");
+        if (F != NULL) {
+            char writeData[BLOCK_SIZE] = "Ciao, questo è un test di scrittura blocco!";
+            printf("Scrittura blocco 10...\n");
+            if (write_block(F, 10, writeData) == 0) {
+                printf("Blocco scritto con successo.\n");
+
+                char readData[BLOCK_SIZE];
+                printf("Lettura blocco 10...\n");
+                if (read_block(F, 10, readData) == 0) {
+                    printf("Contenuto letto: %s\n", readData);
+                } else {
+                    printf("Errore nella lettura del blocco.\n");
+                }
+            } else {
+                printf("Errore nella scrittura del blocco.\n");
+            }
+            fclose(F);
+        } else {
+            printf("Errore nell'apertura del file per test blocco.\n");
+        }
+
         printf("Apertura e lettura del file system...\n");
         if (open_fs("test.img") == 0) {
             printf("File system aperto e letto con successo.\n");
