@@ -199,6 +199,34 @@ int free_inode(struct inode *inodeTable, inode_t inodeNum){
     return -1; //l'inode era già libero
 }
 
+int inode_read(struct inode *inodeTable, inode_t inodenum){ //stampa le informazioni di un determinato inode
+    if(inodeTable[inodenum].isUsed==1){ //se l'inode è in uso
+        printf("Inode %u:\n", inodenum); //stampa il numero di inode
+        printf("    Dimensione del file: %u byte\n", inodeTable[inodenum].size); //stampoa la dimensione del file
+        printf("    Blocchi diretti: "); //stampa i blocchi diretti con il ciclo che segue
+        for(ui32 j=0; j<INODE_DIRECT; j++){ //per ogni blocco diretto 
+            if(inodeTable[inodenum].directBlocks[j] != 0){
+                printf("%u ", inodeTable[inodenum].directBlocks[j]); //stampa il blocco diretto se non è 0
+            }
+        }
+        printf("\n");
+        if(inodeTable[inodenum].indirectBlock != 0){
+            printf("  Blocco indiretto: %u\n", inodeTable[inodenum].indirectBlock);
+        }
+        printf("  Creato il: %u\n", inodeTable[inodenum].created_at);
+        printf("  Ultima modifica: %u\n", inodeTable[inodenum].modified_at);
+        return 0; //lettura inode avvenuta con successo
+    }
+}
+
+int inode_write(struct inode *inodeTable, inode_t inodenum){
+    if(inodeTable[inodenum].isUsed==1){
+        inodeTable[inodenum].modified_at = (ui32)time(NULL); //aggiorniamo il timestamp di modifica
+        return 0; //scrittura inode avvenuta con successo
+    }
+    return -1; //l'inode non è in uso
+}
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
