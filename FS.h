@@ -75,5 +75,6 @@ int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name,
 int dir_add_entry(struct filesystem *fs, inode_t dir_inode_num, const char *name, inode_t inodeNum);
 int dir_remove_entry(struct filesystem *fs, struct inode *dir_inode, const char *name);
 int fs_create_file(struct filesystem *fs, struct inode *dir, const char *name, uint32_t type);
+int dir_list_entries(struct filesystem *fs, struct inode *dir_inode);
 
 #endif
