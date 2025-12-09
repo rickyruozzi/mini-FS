@@ -353,6 +353,24 @@ int fs_create_file(struct filesystem *fs, struct inode *dir, const char *name, u
     return 0; //come vediamo l'agguna nel file consiste nella creazione di un inode e nell'aggiunta del riferimento ad esso nella directory
 }
 
+int fs_delete_file(struct filesystem *fs, struct inode *dir,  const char * name){
+    struct inode file_inode; //creiamo un inode temporaneo per leggere l'inode del file da eliminare
+    if(dir_lookup(fs, dir, name, &file_inode)!=0){ //cerchiamo il file della directory
+        return -1; //file non trovato
+    }
+    for(ui32 i=0; i<INODE_DIRECT; i++){
+        if(file_inode.directBlocks[i]!=0){
+            if(free_block(fs, file_inode.directBlocks[i])!=0){ //eliminiamo ogni blocco usato dal file
+                return -1; //blocco non eliminato correttamente
+            }
+        }
+    if(free_inode(fs, file_inode.isUsed)!=0){
+        return -1; //inode non eliminato correttamente
+    }
+    if(dir_remove_entry(fs, dir, name)!=0){ //eliminiamo la entry dalla directory
+        return -1; //entry non rimossa correttamente
+    }
+}
 
 int main() {
     // Test della creazione e apertura del file system
