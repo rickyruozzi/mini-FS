@@ -242,7 +242,7 @@ int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name,
         if(read_block(fs->img, dir_inode->directBlocks[i], buffer) != 0){ //legge il blocco diretto, se riceve -1 allora il blocco non è leggibile
             return -1; //errore nella lettura del blocco
         }
-        for(ui32 j=0; entries_per_block; j++){ //scorriamo tutte le entries nel blocco che abbiamo scritto nel nostro buffer
+        for(ui32 j=0; j < entries_per_block; j++){ //scorriamo tutte le entries nel blocco che abbiamo scritto nel nostro buffer
             if(strncmp(entries[j].fname, name, FNAME_LEN)==0){ //compariamo il nome dell'entry con quello passato come parametro
                 *result = inode_read(fs, entries[j].inodeNum); //legge l'inode corrispondente al file trovato
                 return 0; //file trovato con successo
@@ -341,35 +341,50 @@ int dir_list_entries(struct filesystem *fs, struct inode *dir_inode){
     return 0; //operazione completata
 }
 
-int fs_create_file(struct filesystem *fs, struct inode *dir, const char *name, uint32_t type){
+int fs_create_file(struct filesystem *fs, inode_t dir_inode_num, const char *name, uint32_t type){
     inode_t new_inode = inode_alloc(fs); //allochiamo il nostro inode
-    if (new_inode==(inode_t)-1) //error handling 
+    if (new_inode==(inode_t)-1) //error handling
     {
         return -1; //errore nell'allocazione dell'inode
     }
-    if(dir_add_entry(fs, dir->directBlocks[0], name, new_inode)!=0){ //tentiamo di aggiungere l'entry nella directory
+    if(dir_add_entry(fs, dir_inode_num, name, new_inode)!=0){ //tentiamo di aggiungere l'entry nella directory
         return -1; //errore nell'aggiunta del file nella directory
     }
     return 0; //come vediamo l'agguna nel file consiste nella creazione di un inode e nell'aggiunta del riferimento ad esso nella directory
 }
 
-int fs_delete_file(struct filesystem *fs, struct inode *dir,  const char * name){
-    struct inode file_inode; //creiamo un inode temporaneo per leggere l'inode del file da eliminare
-    if(dir_lookup(fs, dir, name, &file_inode)!=0){ //cerchiamo il file della directory
+int fs_delete_file(struct filesystem *fs, struct inode *dir, const char *name){
+    struct inode file_inode; //dichiariamo un inode che conterrà l'inode del file da eliminare
+    if(dir_lookup(fs, dir, name, &file_inode) != 0){ //controlliamo se il file esiste nella directory
+        printf("File %s non trovato nella directory.\n", name);
         return -1; //file non trovato
     }
-    for(ui32 i=0; i<INODE_DIRECT; i++){
-        if(file_inode.directBlocks[i]!=0){
-            if(free_block(fs, file_inode.directBlocks[i])!=0){ //eliminiamo ogni blocco usato dal file
-                return -1; //blocco non eliminato correttamente
+    //in file_inode ora dovrebbe essere scritto l'inode del file da eliminare
+    inode_t inode_num = 0; //variabile che conterrà il numero dell'inode del file da eliminare
+    for(inode_t i = 0; i < fs->sb.inode_count; i++){ //cerchiamo l'inode del file da eliminare
+        if(memcmp(&fs->inodeTable[i], &file_inode, sizeof(struct inode)) == 0){ //confrontiamo l'inode letto con quello nella tabella degli inode
+            inode_num = i; //se i due inode sono uguali salviamo il numero dell'inode in una variabile
+            break;
+        }
+    }
+    for(ui32 i = 0; i < INODE_DIRECT; i++){ //liberiamo tutti i blocchi diretti associati al file
+        if(file_inode.directBlocks[i] != 0){ //eliminiamo i blocchi dell'inode
+            if(free_block(fs, file_inode.directBlocks[i]) != 0){
+                printf("Errore nella liberazione del blocco %u.\n", file_inode.directBlocks[i]);
+                return -1; //errore nella liberazione del blocco
             }
         }
-    if(free_inode(fs, file_inode.isUsed)!=0){
-        return -1; //inode non eliminato correttamente
     }
-    if(dir_remove_entry(fs, dir, name)!=0){ //eliminiamo la entry dalla directory
-        return -1; //entry non rimossa correttamente
+    if(free_inode(fs, inode_num) != 0){ //liberiamo l'inode del file
+        printf("Errore nella liberazione dell'inode %u.\n", inode_num);
+        return -1;
     }
+    if(dir_remove_entry(fs, dir, name) != 0){ //rimuoviamo la dirEntry dalla directory
+        printf("Errore nella rimozione dell'entry %s dalla directory.\n", name);
+        return -1;
+    }
+    inode_write(fs,inode_num); //aggiorniamo la tabella degli inode
+    return 0;
 }
 
 int main() {
@@ -459,6 +474,30 @@ int main() {
                     printf("Entry rimossa con successo.\n");
                 } else {
                     printf("Errore nella rimozione dell'entry.\n");
+                }
+
+                // Test fs_create_file
+                if (fs_create_file(fs, dir_inode_num, "created_file.txt", 0) == 0) {
+                    printf("File creato con successo.\n");
+                } else {
+                    printf("Errore nella creazione del file.\n");
+                }
+
+                // Lista entries dopo creazione
+                if (dir_list_entries(fs, dir_inode) == 0) {
+                    printf("Entries listate dopo creazione.\n");
+                }
+
+                // Test fs_delete_file
+                if (fs_delete_file(fs, dir_inode, "created_file.txt") == 0) {
+                    printf("File eliminato con successo.\n");
+                } else {
+                    printf("Errore nell'eliminazione del file.\n");
+                }
+
+                // Lista entries dopo eliminazione
+                if (dir_list_entries(fs, dir_inode) == 0) {
+                    printf("Entries listate dopo eliminazione.\n");
                 }
             } else {
                 printf("Errore nell'allocazione dell'inode directory.\n");
