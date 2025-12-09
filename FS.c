@@ -26,27 +26,28 @@ int init_fs(const char *img, ui32 totalBlocks){
     //trova il primo blocco dedicato ai dati dopo la tabella degli inode
     //scrittura del superblocco
     fwrite(sb, sizeof(struct superblock), 1, F);
-    free(sb); //scriviamo il superblocco nel file e liberiamo la memoria
 
-    //inizializziamo la bitmap dei blocchi liberi 
-    ui32 bitmapSize = (totalBlocks + 7) / 8; 
+    //inizializziamo la bitmap dei blocchi liberi
+    ui32 bitmapSize = (totalBlocks + 7) / 8;
      /*dimensione della bitmap data dal numero totale di blocchi arrotondato al blocco superiore,
      diviso per il numero di bit nel byte */
     ui8 *blockBitmap = malloc(bitmapSize); //la dimensione della bitmap in byte
     fseek(F, BLOCK_SIZE * sb->free_block_bitmap_start, SEEK_SET); //spostiamo il puntatore di scrittura all'inizio della bitmap
-    memset(blockBitmap, 0, bitmapSize); 
+    memset(blockBitmap, 0, bitmapSize);
     //memset inizializza la bitmap a 0 (tutti i blocchi liberi)
     fwrite(blockBitmap, bitmapSize, 1, F);
     //scrive la bitmap dei blocchi liberi nel file
     free(blockBitmap); //libera lo spazio della bitmap in RAM
 
-    //inizializziamo la tabella degli inode 
+    //inizializziamo la tabella degli inode
     struct inode *inodeTable = malloc(sb->inode_count * sizeof(struct inode));
     //allochiamo lo spazio per inode_count inode nella tabella
     memset(inodeTable, 0, sb->inode_count * sizeof(struct inode)); //inizializziamo tutti gli inode a zero
     fseek(F, BLOCK_SIZE * sb->inode_table_start, SEEK_SET); //spostiamo il puntatore di scrittura all'inizio della tabella degli inode
     fwrite(inodeTable, sb->inode_count * sizeof(struct inode), 1, F); //scriviamo la tabella degli inode inizializzata nel file
     free(inodeTable); //liberiamo lo spazio della tabella degli inode in RAM
+
+    free(sb); //scriviamo il superblocco nel file e liberiamo la memoria
 
     fclose(F); //chiudiamo il file
     return 0; //il valore di ritorno 0 indica che il processo è andato a buon fine
@@ -280,7 +281,7 @@ int dir_add_entry(struct filesystem *fs, struct inode *dir_inode, const char *na
                 return -1; //errore nell'allocazione del blocco
             }
             dir_inode->directBlocks[i] = newBlock; //impostiamo il nuovo blocco diretto nella directory
-            memset(entries, 0, BLOCK_SIZE); //inizializziamo tutte le entries a 0
+            memset(entries, 0, sizeof(entries)); //inizializziamo tutte le entries a 0
             strncpy(entries[0].fname, name, sizeof(entries[0].fname)); //copia il nome del file nella dirEntry
             entries[0].inodeNum = inodeNum; //impostiamo l'inodeNum nella dirEntry
             if(write_block(fs->img, newBlock, entries)!=0){
@@ -316,8 +317,6 @@ int dir_remove_entry(struct filesystem *fs, struct inode *dir_inode, const char 
     return -1; //il file non è stato trovato
 }
 
-
-
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
@@ -328,13 +327,13 @@ int main() {
         FILE *F = fopen("test.img", "r+b");
         if (F != NULL) {
             char writeData[BLOCK_SIZE] = "Ciao, questo è un test di scrittura blocco!";
-            printf("Scrittura blocco 10...\n");
-            if (write_block(F, 10, writeData) == 0) {
+            printf("Scrittura blocco 20...\n");
+            if (write_block(F, 20, writeData) == 0) {
                 printf("Blocco scritto con successo.\n");
 
                 char readData[BLOCK_SIZE];
-                printf("Lettura blocco 10...\n");
-                if (read_block(F, 10, readData) == 0) {
+                printf("Lettura blocco 20...\n");
+                if (read_block(F, 20, readData) == 0) {
                     printf("Contenuto letto: %s\n", readData);
                 } else {
                     printf("Errore nella lettura del blocco.\n");
@@ -348,8 +347,10 @@ int main() {
         }
 
         printf("Apertura e lettura del file system...\n");
-        if (open_fs("test.img", false, false) == 0) {
+        struct filesystem *fs = open_fs("test.img", false, false);
+        if (fs != NULL) {
             printf("File system aperto e letto con successo.\n");
+            // TODO: Close the filesystem if needed
         } else {
             printf("Errore nell'apertura del file system.\n");
         }
