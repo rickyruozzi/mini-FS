@@ -232,35 +232,30 @@ int inode_write(struct filesystem *fs, inode_t inodenum){
 }
 
 int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name, struct inode *result){
-    char buffer[BLOCK_SIZE];
-    struct dirEntry *entries = (struct dirEntry*)buffer;
-    for (ui32 i=0; i<INODE_DIRECT; i++){
+    int entries_per_block = BLOCK_SIZE / sizeof(struct dirEntry); //numero di entry contenute in un blocco
+    char buffer[BLOCK_SIZE]; //creiamo un buffer che conterrà il blocco letto volta per volta
+    struct dirEntry *entries = (struct dirEntry*)buffer; //eseguiamo il casting del buffer come nel metodo precedente
+    for (ui32 i=0; i<INODE_DIRECT; i++){ //scorriamo i blocchi diretti da leggere
         if(dir_inode->directBlocks[i]==0){
             continue; //se il blocco diretto è 0, salta al prossimo
         }
         if(read_block(fs->img, dir_inode->directBlocks[i], buffer) != 0){ //legge il blocco diretto, se riceve -1 allora il blocco non è leggibile
             return -1; //errore nella lettura del blocco
         }
-        for(ui32 j=0; j<BLOCK_SIZE / sizeof(struct dirEntry); j++){
-            if(strncmp(entries[j].fname, name, FNAME_LEN)==0){
+        for(ui32 j=0; entries_per_block; j++){ //scorriamo tutte le entries nel blocco che abbiamo scritto nel nostro buffer
+            if(strncmp(entries[j].fname, name, FNAME_LEN)==0){ //compariamo il nome dell'entry con quello passato come parametro
                 *result = inode_read(fs, entries[j].inodeNum); //legge l'inode corrispondente al file trovato
                 return 0; //file trovato con successo
             }
         }
     }
     return -1; //file non trovato
-    //entries diventa un array contenente tutti i blocchi letti tramite read_block
-    //successivamente scorriamo l'array per cercare il file con il nome specificato
-    //se lo troviamo, leggiamo l'inode corrispondente e lo scriviamo in result
-    //ritorniamo 0 per indicare la buona riuscita dell'operazione e -1 in caso di errore
-
 }
-//metodo per cercare un file in una directory 
 
 int dir_add_entry(struct filesystem *fs, inode_t dir_inode_num, const char *name, inode_t inodeNum){ //metodo che aggiungerà un file creato ad una directtory
-    struct inode *dir_inode = &fs->inodeTable[dir_inode_num];
-    char buffer[BLOCK_SIZE];
-    struct dirEntry *entries = (struct dirEntry*)buffer;
+    struct inode *dir_inode = &fs->inodeTable[dir_inode_num]; //prendiamo l'inode della directory
+    char buffer[BLOCK_SIZE]; //creiamoun buffer che conterrà il blocco letto volta per volta
+    struct dirEntry *entries = (struct dirEntry*)buffer; //eseguiamo il casting del buffer a struct dirEntry
     int entries_per_block = BLOCK_SIZE / sizeof(struct dirEntry); //numero di entry contenute in un blocco
     for(ui32 i=0; i<INODE_DIRECT; i++){ //scorriamo i blocchi diretti della directory, in ogni bloccoscorreremo le relative entries
         if(dir_inode->directBlocks[i]!=0){ //se il blocco diretto non è 0, quindi esiste
@@ -301,8 +296,8 @@ int dir_add_entry(struct filesystem *fs, inode_t dir_inode_num, const char *name
 }
 
 int dir_remove_entry(struct filesystem *fs, struct inode *dir_inode, const char *name){
-    char buffer[BLOCK_SIZE];
-    struct dirEntry *entries = (struct dirEntry*)buffer;
+    char buffer[BLOCK_SIZE]; //creiamo un buffer che conterrà il blocco letto volta per volta
+    struct dirEntry *entries = (struct dirEntry*)buffer; //eseguiamo nuovamente il casting del buffer come nel metodo precedente
     int entries_per_block = BLOCK_SIZE / sizeof(struct dirEntry); //numero di entry contenute in un blocco
     for(ui32 i=0; i<INODE_DIRECT; i++){ //scorriamo i blocchi diretti da leggere
         if(dir_inode->directBlocks[i]==0){
