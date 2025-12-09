@@ -121,12 +121,12 @@ void printInodeTable(struct filesystem *fs){
     }
 }
 
-block_t block_alloc(ui8 *blockBitmap, ui32 totalBlocks){
-    for(ui32 i=0; i<totalBlocks; i++){
-        ui8 byte = blockBitmap[i/8];
+block_t block_alloc(struct filesystem *fs){
+    for(ui32 i=0; i<fs->sb.total_blocks; i++){
+        ui8 byte = fs->blockBitmap[i/8];
         ui8 bit = (byte >> (i%8)) & 1;
         if(bit==0){
-            blockBitmap[i/8] = byte | (1 << (i%8)); //setto il bit a 1 per indicare che il blocco è occupato
+            fs->blockBitmap[i/8] = byte | (1 << (i%8)); //setto il bit a 1 per indicare che il blocco è occupato
             /*
             i è l'indice del blocco corrente, byte è il byte corrente della bitmap (ottenuto con i/8),
             l'operazione (1<<(i%8)) sposta il bit 1 a sinistra di (i%8) posizioni per creare una maschera, 
@@ -135,13 +135,14 @@ block_t block_alloc(ui8 *blockBitmap, ui32 totalBlocks){
             return i; //ritorno il blocco allocato
         }
     }
+    return (block_t)-1; // no free block found
 }
 
-int free_block(ui8 *blockBitmap, block_t blockNum){
-    ui8 byte = blockBitmap[blockNum/8];
+int free_block(struct filesystem *fs, block_t blockNum){
+    ui8 byte = fs->blockBitmap[blockNum/8];
     ui8 bit = (byte >> (blockNum%8)) & 1; //ottengo il bit corrispondente al blocco
     if(bit==1){
-        blockBitmap[blockNum/8] = byte & ~(1 << (blockNum%8)); 
+        fs->blockBitmap[blockNum/8] = byte & ~(1 << (blockNum%8)); 
         /*
         l'operazione (1 << (blockNum%8)) crea una maschera con il bit corrispondente al blocco impostato a 1,
         l'operazione NOT (~) inverte la maschera, impostando quel bit a 0 e tutti gli altri a 1,
@@ -156,72 +157,72 @@ int free_block(ui8 *blockBitmap, block_t blockNum){
 
 int read_block(FILE *F, block_t block_num, void *buffer){
     fseek(F, block_num * BLOCK_SIZE, SEEK_SET); //spostiamo la testina di lettura al blocco desiderato
-    size_t result = fread(buffer, BLOCK_SIZE, 1, F); //inseriamo in result il numero di blocchi che abbiamo letto 
+    size_t result = fread(buffer, BLOCK_SIZE, 1, F); //inseriamo in result il numero di blocchi che abbiamo letto
     //abbiamo inoltre inserito nel buffer che abbiamo passato il contenuto del blocco letto con fread
     if (result != 1) {
         return -1; //errore nella lettura del blocco
     }
-    return 0; 
+    return 0;
 }
 
 int write_block(FILE *F, block_t block_num, void *buffer){
     fseek(F, block_num * BLOCK_SIZE, SEEK_SET); //spostiamo la testina di scrittura nel blocco in cui vogliamo scrivere
-    size_t result = fwrite(buffer, BLOCK_SIZE, 1, F); //scriviamo il contenuto del buffer nel blocco 
+    size_t result = fwrite(buffer, BLOCK_SIZE, 1, F); //scriviamo il contenuto del buffer nel blocco
     if(result !=1){
         return -1; //errore nella scrittura del blocco
     }
-    return 0; 
+    return 0;
 }
 
-inode_t inode_alloc(struct inode *inodeTable, ui32 inodecount){
-    for(ui32 i=0; i<inodecount; i++){
-        if(inodeTable[i].isUsed==0){ //se l'inode non è in uso
-            inodeTable[i].isUsed=1; //lo segniamo come in uso
-            inodeTable[i].size=0; //inizializziamo la dimensione del file a 0
-            inodeTable[i].created_at = (ui32)time(NULL); //impostiamo il timestamp di creazione
-            inodeTable[i].modified_at = (ui32)time(NULL); //impostiamo
-            inodeTable[i].indirectBlock = 0; //inizializziamo il puntatore al blocco indiretto a 0
-            memset(inodeTable[i].directBlocks, 0, INODE_DIRECT * sizeof(ui32)); //inizializziamo i blocchi diretti legati al file a 0
+inode_t inode_alloc(struct filesystem *fs){
+    for(ui32 i=0; i<fs->sb.inode_count; i++){
+        if(fs->inodeTable[i].isUsed==0){ //se l'inode non è in uso
+            fs->inodeTable[i].isUsed=1; //lo segniamo come in uso
+            fs->inodeTable[i].size=0; //inizializziamo la dimensione del file a 0
+            fs->inodeTable[i].created_at = (ui32)time(NULL); //impostiamo il timestamp di creazione
+            fs->inodeTable[i].modified_at = (ui32)time(NULL); //impostiamo
+            fs->inodeTable[i].indirectBlock = 0; //inizializziamo il puntatore al blocco indiretto a 0
+            memset(fs->inodeTable[i].directBlocks, 0, INODE_DIRECT * sizeof(ui32)); //inizializziamo i blocchi diretti legati al file a 0
             return i; //ritorniamo il numero dell'inode allocato
         }
     }
-    return -1; //nessun inode disponibile
+    return (inode_t)-1; //nessun inode disponibile
 }
 
-int free_inode(struct inode *inodeTable, inode_t inodeNum){
-    if(inodeTable[inodeNum].isUsed==1){
-        inodeTable[inodeNum].isUsed=0;
+int free_inode(struct filesystem *fs, inode_t inodeNum){
+    if(fs->inodeTable[inodeNum].isUsed==1){
+        fs->inodeTable[inodeNum].isUsed=0;
         return 0;
     }
     return -1; //l'inode era già libero
 }
 
-struct inode inode_read(struct inode *inodeTable, inode_t inodenum){ //stampa le informazioni di un determinato inode
-    if(inodeTable[inodenum].isUsed==1){ //se l'inode è in uso
+struct inode inode_read(struct filesystem *fs, inode_t inodenum){ //stampa le informazioni di un determinato inode
+    if(fs->inodeTable[inodenum].isUsed==1){ //se l'inode è in uso
         printf("Inode %u:\n", inodenum); //stampa il numero di inode
-        printf("    Dimensione del file: %u byte\n", inodeTable[inodenum].size); //stampoa la dimensione del file
+        printf("    Dimensione del file: %u byte\n", fs->inodeTable[inodenum].size); //stampoa la dimensione del file
         printf("    Blocchi diretti: "); //stampa i blocchi diretti con il ciclo che segue
         for(ui32 j=0; j<INODE_DIRECT; j++){ //per ogni blocco diretto 
-            if(inodeTable[inodenum].directBlocks[j] != 0){
-                printf("%u ", inodeTable[inodenum].directBlocks[j]); //stampa il blocco diretto se non è 0
+            if(fs->inodeTable[inodenum].directBlocks[j] != 0){
+                printf("%u ", fs->inodeTable[inodenum].directBlocks[j]); //stampa il blocco diretto se non è 0
             }
         }
         printf("\n");
-        if(inodeTable[inodenum].indirectBlock != 0){
-            printf("  Blocco indiretto: %u\n", inodeTable[inodenum].indirectBlock);
+        if(fs->inodeTable[inodenum].indirectBlock != 0){
+            printf("  Blocco indiretto: %u\n", fs->inodeTable[inodenum].indirectBlock);
         }
-        printf("  Creato il: %u\n", inodeTable[inodenum].created_at);
-        printf("  Ultima modifica: %u\n", inodeTable[inodenum].modified_at);
-        return inodeTable[inodenum]; //ritorna l'inode letto
+        printf("  Creato il: %u\n", fs->inodeTable[inodenum].created_at);
+        printf("  Ultima modifica: %u\n", fs->inodeTable[inodenum].modified_at);
+        return fs->inodeTable[inodenum]; //ritorna l'inode letto
     }
     struct inode emptyInode;
     memset(&emptyInode, 0, sizeof(struct inode)); //dichiara un nuovo inode vuoto e inizializza tutti i suoi campi a 0 
     return emptyInode; //poilo restituisce
 }
 
-int inode_write(struct inode *inodeTable, inode_t inodenum){
-    if(inodeTable[inodenum].isUsed==1){
-        inodeTable[inodenum].modified_at = (ui32)time(NULL); //aggiorniamo il timestamp di modifica
+int inode_write(struct filesystem *fs, inode_t inodenum){
+    if(fs->inodeTable[inodenum].isUsed==1){
+        fs->inodeTable[inodenum].modified_at = (ui32)time(NULL); //aggiorniamo il timestamp di modifica
         return 0; //scrittura inode avvenuta con successo
     }
     return -1; //l'inode non è in uso
@@ -238,7 +239,7 @@ int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name,
         }
         for(ui32 j=0; j<BLOCK_SIZE / sizeof(struct dirEntry); j++){
             if(strcmp(entries[j].fname, name)==0){
-                *result = inode_read(fs->inodeTable, entries[j].inodeNum); //legge l'inode corrispondente al file trovato
+                *result = inode_read(fs, entries[j].inodeNum); //legge l'inode corrispondente al file trovato
                 return 0; //file trovato con successo
             }
         }
@@ -257,40 +258,38 @@ int dir_add_entry(struct filesystem *fs, struct inode *dir_inode, const char *na
     int entries_per_block = BLOCK_SIZE / sizeof(struct dirEntry); //numero di entry contenute in un blocco
     for(ui32 i=0; i<INODE_DIRECT; i++){ //scorriamo i blocchi diretti della directory, in ogni bloccoscorreremo le relative entries
         if(dir_inode->directBlocks[i]!=0){ //se il blocco diretto non è 0, quindi esiste
-            if (read_block(fs,dir_inode->directBlocks[i], entries)!=0) //legge il blocco diretto e se riceve -1, quindi il blocco non è leggibile, ritorna un errore
+            if (read_block(fs->img,dir_inode->directBlocks[i], entries)!=0) //legge il blocco diretto e se riceve -1, quindi il blocco non è leggibile, ritorna un errore
             {
                 //il contenuto del blocco, quindi le entries finiscono così in entries, il quale è un array di struct dirEntry
-                return -1; //il blocco non è leggibile 
+                return -1; //il blocco non è leggibile
             }
             for(ui32 j=0; j< entries_per_block; j++){ //BLOCK_SIZE / sizeof(struct dirEntry) è il numero massimo di entry che possono essere contenute in un blocco
                 if(entries[j].inodeNum==0){ //se l'inodeNum è 0, quindi l'entry è libera
                     strncpy(entries[j].fname, name, sizeof(entries[j].fname)); //copia il nome del file nella nuova entry della directory
                     entries[j].inodeNum=inodeNum; //imposta il riferimento all'inode nel file creato
-                    if(write_block(fs, dir_inode->directBlocks[i], entries)!=0){ //scrive il blocco diretto 
+                    if(write_block(fs->img, dir_inode->directBlocks[i], entries)!=0){ //scrive il blocco diretto
                         //questo perchè il blocco aggiornato è ancora solo in locale
                         return -1; //errore nella scrittura del blocco
                     }
                     return 0; //entry aggiunta con successo
-                }    
+                }
             }
-            } 
-            else 
-            {
-                block_t newBlock = block_alloc(fs->blockBitmap, fs->sb.total_blocks); //allochiamo un nuovo blocco
-                if(newBlock == (block_t)-1){
-                    return -1; //errore nell'allocazione del blocco
-                }
-                dir_inode->directBlocks[i] = newBlock; //impostiamo il nuovo blocco diretto nella directory
-                memset(entries, 0, BLOCK_SIZE); //inizializziamo tutte le entries a 0
-                strncpy(entries[0].fname, name, sizeof(entries[0].fname)); //copia il nome del file nella dirEntry
-                entries[0].inodeNum = inodeNum; //impostiamo l'inodeNum nella dirEntry 
-                if(write_block(fs, newBlock, entries)!=0){
-                    return -1; //problema nella scrittura del blocco
-                }
-                return 0; //entry aggiunta con successo
+        } else {
+            block_t newBlock = block_alloc(fs); //allochiamo un nuovo blocco
+            if(newBlock == (block_t)-1){
+                return -1; //errore nell'allocazione del blocco
+            }
+            dir_inode->directBlocks[i] = newBlock; //impostiamo il nuovo blocco diretto nella directory
+            memset(entries, 0, BLOCK_SIZE); //inizializziamo tutte le entries a 0
+            strncpy(entries[0].fname, name, sizeof(entries[0].fname)); //copia il nome del file nella dirEntry
+            entries[0].inodeNum = inodeNum; //impostiamo l'inodeNum nella dirEntry
+            if(write_block(fs->img, newBlock, entries)!=0){
+                return -1; //problema nella scrittura del blocco
+            }
+            return 0; //entry aggiunta con successo
         }
-        return -1; //nessuno spazio disponibile per nuove entry
-}
+    }
+    return -1; //nessuno spazio disponibile per nuove entry
 }
 
 int dir_remove_entry(struct filesystem *fs, struct inode *dir_inode, const char *name){
@@ -300,13 +299,13 @@ int dir_remove_entry(struct filesystem *fs, struct inode *dir_inode, const char 
         if(dir_inode->directBlocks[i]==0){
             continue; //se il blocco diretto è 0, salta al prossimo perchè non è allocato
         }
-        if(read_block(fs,dir_inode->directBlocks[i],entries)!=0){ //leggiamo il blocco, se la lettura avviene correttamente restituisce zero
+        if(read_block(fs->img,dir_inode->directBlocks[i],entries)!=0){ //leggiamo il blocco, se la lettura avviene correttamente restituisce zero
             return -1; //errore nella lettura del blocco
         }
         for(ui32 i=0; i<entries_per_block; i++){ //leggiamo tutte le entries nel blocco
             if(strcmp(entries[i].fname, name)==0){ //compariamo il nome
                 memset(&entries[i], 0, sizeof(struct dirEntry)); //azzera l'entry trovata in posizione i
-                if (write_block(fs, dir_inode->directBlocks[i], entries)!=0){ //inserisce il blocco aggiornato al posto del precedente
+                if (write_block(fs->img, dir_inode->directBlocks[i], entries)!=0){ //inserisce il blocco aggiornato al posto del precedente
                     //directBlocks[i] è il blocco della directory in cui si trova l'entry da rimuovere
                     return -1; //errore nell'aggiornamento del blocco
                 }
