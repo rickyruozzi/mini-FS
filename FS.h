@@ -52,4 +52,26 @@ struct dirEntry{
     inode_t inodeNum; //numero dell'inode corrispondente 
 };
 
+struct filesystem {
+    FILE *img;                 //file immagine del file system
+    struct superblock sb;       //superblocco del file system
+    ui8 *blockBitmap;          //bitmap dei blocchi liberi
+    struct inode *inodeTable;   //tabella degli inode
+};
+
+// Function prototypes
+struct filesystem *open_fs(const char *img, bool printBlocks, bool printInodes);
+void printBitmap(struct filesystem *fs);
+void printInodeTable(struct filesystem *fs);
+block_t block_alloc(struct filesystem *fs);
+int free_block(struct filesystem *fs, block_t blockNum);
+int read_block(struct filesystem *fs, block_t block_num, void *buffer);
+int write_block(struct filesystem *fs, block_t block_num, void *buffer);
+inode_t inode_alloc(struct filesystem *fs);
+int free_inode(struct filesystem *fs, inode_t inodeNum);
+struct inode inode_read(struct filesystem *fs, inode_t inodenum);
+int inode_write(struct filesystem *fs, inode_t inodenum);
+int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name, struct inode *result);
+int dir_add_entry(struct filesystem *fs, struct inode *dir_inode, const char *name, inode_t inodeNum);
+
 #endif
