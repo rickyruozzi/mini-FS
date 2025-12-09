@@ -54,7 +54,7 @@ int init_fs(const char *img, ui32 totalBlocks){
 }
 
 struct filesystem *open_fs(const char *img, bool printBlocks, bool printInodes){
-    FILE* F=fopen(img, "rb");
+    FILE* F=fopen(img, "r+b");
     if (F==NULL){
         printf("Errore nell'apertura dell'immagine del file system.\n");
         return NULL; //errore nell'apertura del file
@@ -123,7 +123,7 @@ void printInodeTable(struct filesystem *fs){
 }
 
 block_t block_alloc(struct filesystem *fs){
-    for(ui32 i=0; i<fs->sb.total_blocks; i++){
+    for(ui32 i=fs->sb.data_start; i<fs->sb.total_blocks; i++){
         ui8 byte = fs->blockBitmap[i/8];
         ui8 bit = (byte >> (i%8)) & 1;
         if(bit==0){
@@ -224,22 +224,25 @@ struct inode inode_read(struct filesystem *fs, inode_t inodenum){ //stampa le in
 int inode_write(struct filesystem *fs, inode_t inodenum){
     if(fs->inodeTable[inodenum].isUsed==1){
         fs->inodeTable[inodenum].modified_at = (ui32)time(NULL); //aggiorniamo il timestamp di modifica
+        fseek(fs->img, BLOCK_SIZE * fs->sb.inode_table_start + inodenum * sizeof(struct inode), SEEK_SET);
+        fwrite(&fs->inodeTable[inodenum], sizeof(struct inode), 1, fs->img);
         return 0; //scrittura inode avvenuta con successo
     }
     return -1; //l'inode non è in uso
 }
 
 int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name, struct inode *result){
-    struct dirEntry entries[BLOCK_SIZE / sizeof(struct dirEntry)]; //array di dirEntry che può contenere tutti gli entry in un blocco
+    char buffer[BLOCK_SIZE];
+    struct dirEntry *entries = (struct dirEntry*)buffer;
     for (ui32 i=0; i<INODE_DIRECT; i++){
         if(dir_inode->directBlocks[i]==0){
             continue; //se il blocco diretto è 0, salta al prossimo
         }
-        if(read_block(fs->img, dir_inode->directBlocks[i], entries) != 0){ //legge il blocco diretto, se riceve -1 allora il blocco non è leggibile
+        if(read_block(fs->img, dir_inode->directBlocks[i], buffer) != 0){ //legge il blocco diretto, se riceve -1 allora il blocco non è leggibile
             return -1; //errore nella lettura del blocco
         }
         for(ui32 j=0; j<BLOCK_SIZE / sizeof(struct dirEntry); j++){
-            if(strcmp(entries[j].fname, name)==0){
+            if(strncmp(entries[j].fname, name, FNAME_LEN)==0){
                 *result = inode_read(fs, entries[j].inodeNum); //legge l'inode corrispondente al file trovato
                 return 0; //file trovato con successo
             }
@@ -254,12 +257,14 @@ int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name,
 }
 //metodo per cercare un file in una directory 
 
-int dir_add_entry(struct filesystem *fs, struct inode *dir_inode, const char *name, inode_t inodeNum){ //metodo che aggiungerà un file creato ad una directtory
-    struct dirEntry entries[BLOCK_SIZE / sizeof(struct dirEntry)]; //array di dirEntry che può contenere tutti gli entry in un blocco
+int dir_add_entry(struct filesystem *fs, inode_t dir_inode_num, const char *name, inode_t inodeNum){ //metodo che aggiungerà un file creato ad una directtory
+    struct inode *dir_inode = &fs->inodeTable[dir_inode_num];
+    char buffer[BLOCK_SIZE];
+    struct dirEntry *entries = (struct dirEntry*)buffer;
     int entries_per_block = BLOCK_SIZE / sizeof(struct dirEntry); //numero di entry contenute in un blocco
     for(ui32 i=0; i<INODE_DIRECT; i++){ //scorriamo i blocchi diretti della directory, in ogni bloccoscorreremo le relative entries
         if(dir_inode->directBlocks[i]!=0){ //se il blocco diretto non è 0, quindi esiste
-            if (read_block(fs->img,dir_inode->directBlocks[i], entries)!=0) //legge il blocco diretto e se riceve -1, quindi il blocco non è leggibile, ritorna un errore
+            if (read_block(fs->img,dir_inode->directBlocks[i], buffer)!=0) //legge il blocco diretto e se riceve -1, quindi il blocco non è leggibile, ritorna un errore
             {
                 //il contenuto del blocco, quindi le entries finiscono così in entries, il quale è un array di struct dirEntry
                 return -1; //il blocco non è leggibile
@@ -268,10 +273,11 @@ int dir_add_entry(struct filesystem *fs, struct inode *dir_inode, const char *na
                 if(entries[j].inodeNum==0){ //se l'inodeNum è 0, quindi l'entry è libera
                     strncpy(entries[j].fname, name, sizeof(entries[j].fname)); //copia il nome del file nella nuova entry della directory
                     entries[j].inodeNum=inodeNum; //imposta il riferimento all'inode nel file creato
-                    if(write_block(fs->img, dir_inode->directBlocks[i], entries)!=0){ //scrive il blocco diretto
+                    if(write_block(fs->img, dir_inode->directBlocks[i], buffer)!=0){ //scrive il blocco diretto
                         //questo perchè il blocco aggiornato è ancora solo in locale
                         return -1; //errore nella scrittura del blocco
                     }
+                    inode_write(fs, dir_inode_num); //persist the inode
                     return 0; //entry aggiunta con successo
                 }
             }
@@ -281,12 +287,13 @@ int dir_add_entry(struct filesystem *fs, struct inode *dir_inode, const char *na
                 return -1; //errore nell'allocazione del blocco
             }
             dir_inode->directBlocks[i] = newBlock; //impostiamo il nuovo blocco diretto nella directory
-            memset(entries, 0, sizeof(entries)); //inizializziamo tutte le entries a 0
+            memset(buffer, 0, BLOCK_SIZE); //inizializziamo tutte le entries a 0
             strncpy(entries[0].fname, name, sizeof(entries[0].fname)); //copia il nome del file nella dirEntry
             entries[0].inodeNum = inodeNum; //impostiamo l'inodeNum nella dirEntry
-            if(write_block(fs->img, newBlock, entries)!=0){
+            if(write_block(fs->img, newBlock, buffer)!=0){
                 return -1; //problema nella scrittura del blocco
             }
+            inode_write(fs, dir_inode_num); //persist the inode
             return 0; //entry aggiunta con successo
         }
     }
@@ -294,19 +301,20 @@ int dir_add_entry(struct filesystem *fs, struct inode *dir_inode, const char *na
 }
 
 int dir_remove_entry(struct filesystem *fs, struct inode *dir_inode, const char *name){
+    char buffer[BLOCK_SIZE];
+    struct dirEntry *entries = (struct dirEntry*)buffer;
     int entries_per_block = BLOCK_SIZE / sizeof(struct dirEntry); //numero di entry contenute in un blocco
-    struct dirEntry entries[entries_per_block]; //struttura che conterrà le entries del blocco letto
     for(ui32 i=0; i<INODE_DIRECT; i++){ //scorriamo i blocchi diretti da leggere
         if(dir_inode->directBlocks[i]==0){
             continue; //se il blocco diretto è 0, salta al prossimo perchè non è allocato
         }
-        if(read_block(fs->img,dir_inode->directBlocks[i],entries)!=0){ //leggiamo il blocco, se la lettura avviene correttamente restituisce zero
+        if(read_block(fs->img,dir_inode->directBlocks[i],buffer)!=0){ //leggiamo il blocco, se la lettura avviene correttamente restituisce zero
             return -1; //errore nella lettura del blocco
         }
-        for(ui32 i=0; i<entries_per_block; i++){ //leggiamo tutte le entries nel blocco
-            if(strcmp(entries[i].fname, name)==0){ //compariamo il nome
-                memset(&entries[i], 0, sizeof(struct dirEntry)); //azzera l'entry trovata in posizione i
-                if (write_block(fs->img, dir_inode->directBlocks[i], entries)!=0){ //inserisce il blocco aggiornato al posto del precedente
+        for(ui32 j=0; j<entries_per_block; j++){ //leggiamo tutte le entries nel blocco
+            if(strncmp(entries[j].fname, name, FNAME_LEN)==0){ //compariamo il nome
+                memset(&entries[j], 0, sizeof(struct dirEntry)); //azzera l'entry trovata in posizione i
+                if (write_block(fs->img, dir_inode->directBlocks[i], buffer)!=0){ //inserisce il blocco aggiornato al posto del precedente
                     //directBlocks[i] è il blocco della directory in cui si trova l'entry da rimuovere
                     return -1; //errore nell'aggiornamento del blocco
                 }
@@ -318,18 +326,21 @@ int dir_remove_entry(struct filesystem *fs, struct inode *dir_inode, const char 
 }
 
 int dir_list_entries(struct filesystem *fs, struct inode *dir_inode){
+    char buffer[BLOCK_SIZE];
+    struct dirEntry *entries = (struct dirEntry*)buffer;
     int entries_per_block = BLOCK_SIZE / sizeof(struct dirEntry); //numero di entry contenute in un blocco
-    struct dirEntry entries[entries_per_block]; //struttura che conterrà le entries del blocco letto 
     printf("elenco dei file nella directory: \n");
     for( ui32 i=0; i<INODE_DIRECT; i++){
         if(dir_inode->directBlocks[i]==0){
             continue; //se il blocco diretto è 0, salta al prossimo perchè non è allocato
         }
-        if(read_block(fs->img, dir_inode->directBlocks[i], entries)!=0){
+        if(read_block(fs->img, dir_inode->directBlocks[i], buffer)!=0){
             return -1; //blocco letto non correttamente
         }
         for(ui32 j=0; j<entries_per_block; j++){
-            printf("File: %s, Inode; %u\n",entries[j].fname, entries[j].inodeNum); //stampa i dettagli della entry 
+            if(entries[j].inodeNum != 0){
+                printf("File: %s, Inode; %u\n",entries[j].fname, entries[j].inodeNum); //stampa i dettagli della entry
+            }
         }
     }
     return 0; //operazione completata
@@ -386,6 +397,45 @@ int main() {
                 printf("Blocco allocato: %u\n", new_block);
             } else {
                 printf("Errore nell'allocazione del blocco.\n");
+            }
+
+            // Test metodi directory
+            printf("Test metodi directory...\n");
+            inode_t dir_inode_num = inode_alloc(fs);
+            if (dir_inode_num != (inode_t)-1) {
+                printf("Inode directory allocato: %u\n", dir_inode_num);
+                struct inode *dir_inode = &fs->inodeTable[dir_inode_num];
+
+                // Aggiungi entry
+                if (dir_add_entry(fs, dir_inode_num, "testfile.txt", new_inode) == 0) {
+                    printf("Entry aggiunta con successo.\n");
+                } else {
+                    printf("Errore nell'aggiunta dell'entry.\n");
+                }
+
+                // Lista entries
+                if (dir_list_entries(fs, dir_inode) == 0) {
+                    printf("Entries listate con successo.\n");
+                } else {
+                    printf("Errore nel listare le entries.\n");
+                }
+
+                // Lookup entry
+                struct inode result;
+                if (dir_lookup(fs, dir_inode, "testfile.txt", &result) == 0) {
+                    printf("Entry trovata: inode %u\n", result.isUsed ? dir_inode_num : 0);
+                } else {
+                    printf("Entry non trovata.\n");
+                }
+
+                // Rimuovi entry
+                if (dir_remove_entry(fs, dir_inode, "testfile.txt") == 0) {
+                    printf("Entry rimossa con successo.\n");
+                } else {
+                    printf("Errore nella rimozione dell'entry.\n");
+                }
+            } else {
+                printf("Errore nell'allocazione dell'inode directory.\n");
             }
 
             // TODO: Close the filesystem if needed

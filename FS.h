@@ -72,7 +72,7 @@ int free_inode(struct filesystem *fs, inode_t inodeNum);
 struct inode inode_read(struct filesystem *fs, inode_t inodenum);
 int inode_write(struct filesystem *fs, inode_t inodenum);
 int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name, struct inode *result);
-int dir_add_entry(struct filesystem *fs, struct inode *dir_inode, const char *name, inode_t inodeNum);
+int dir_add_entry(struct filesystem *fs, inode_t dir_inode_num, const char *name, inode_t inodeNum);
 int dir_remove_entry(struct filesystem *fs, struct inode *dir_inode, const char *name);
 
 #endif
