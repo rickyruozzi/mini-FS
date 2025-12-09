@@ -353,6 +353,7 @@ int fs_create_file(struct filesystem *fs, struct inode *dir, const char *name, u
     return 0; //come vediamo l'agguna nel file consiste nella creazione di un inode e nell'aggiunta del riferimento ad esso nella directory
 }
 
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
