@@ -317,6 +317,24 @@ int dir_remove_entry(struct filesystem *fs, struct inode *dir_inode, const char 
     return -1; //il file non è stato trovato
 }
 
+int dir_list_entries(struct filesystem *fs, struct inode *dir_inode){
+    int entries_per_block = BLOCK_SIZE / sizeof(struct dirEntry); //numero di entry contenute in un blocco
+    struct dirEntry entries[entries_per_block]; //struttura che conterrà le entries del blocco letto 
+    printf("elenco dei file nella directory: \n");
+    for( ui32 i=0; i<INODE_DIRECT; i++){
+        if(dir_inode->directBlocks[i]==0){
+            continue; //se il blocco diretto è 0, salta al prossimo perchè non è allocato
+        }
+        if(read_block(fs->img, dir_inode->directBlocks[i], entries)!=0){
+            return -1; //blocco letto non correttamente
+        }
+        for(ui32 j=0; j<entries_per_block; j++){
+            printf("File: %s, Inode; %u\n",entries[j].fname, entries[j].inodeNum); //stampa i dettagli della entry 
+        }
+    }
+    return 0; //operazione completata
+}
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
