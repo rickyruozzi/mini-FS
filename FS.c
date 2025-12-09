@@ -341,6 +341,18 @@ int dir_list_entries(struct filesystem *fs, struct inode *dir_inode){
     return 0; //operazione completata
 }
 
+int fs_create_file(struct filesystem *fs, struct inode *dir, const char *name, uint32_t type){
+    inode_t new_inode = inode_alloc(fs); //allochiamo il nostro inode
+    if (new_inode==(inode_t)-1) //error handling 
+    {
+        return -1; //errore nell'allocazione dell'inode
+    }
+    if(dir_add_entry(fs, dir->directBlocks[0], name, new_inode)!=0){ //tentiamo di aggiungere l'entry nella directory
+        return -1; //errore nell'aggiunta del file nella directory
+    }
+    return 0; //come vediamo l'agguna nel file consiste nella creazione di un inode e nell'aggiunta del riferimento ad esso nella directory
+}
+
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
