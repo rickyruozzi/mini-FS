@@ -368,6 +368,26 @@ int main() {
         struct filesystem *fs = open_fs("test.img", false, false);
         if (fs != NULL) {
             printf("File system aperto e letto con successo.\n");
+
+            // Test allocazione inode
+            printf("Test allocazione inode...\n");
+            inode_t new_inode = inode_alloc(fs);
+            if (new_inode != (inode_t)-1) {
+                printf("Inode allocato: %u\n", new_inode);
+                inode_read(fs, new_inode);
+            } else {
+                printf("Errore nell'allocazione dell'inode.\n");
+            }
+
+            // Test allocazione blocco
+            printf("Test allocazione blocco...\n");
+            block_t new_block = block_alloc(fs);
+            if (new_block != (block_t)-1) {
+                printf("Blocco allocato: %u\n", new_block);
+            } else {
+                printf("Errore nell'allocazione del blocco.\n");
+            }
+
             // TODO: Close the filesystem if needed
         } else {
             printf("Errore nell'apertura del file system.\n");
