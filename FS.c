@@ -387,6 +387,8 @@ int fs_delete_file(struct filesystem *fs, struct inode *dir, const char *name){
     return 0;
 }
 
+
+//I test nel main sono stati generati dall'AI
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
