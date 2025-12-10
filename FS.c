@@ -395,4 +395,16 @@ int path_solver(struct filesystem *fs, const char *path,struct inode *result ){
     return 0; 
 }
 
+int count_free_blocks(ui8 *bitmap, ui32 total_blocks){
+    ui32 free_blocks=0; //accumulatore
+    for (block_t b = 0; b < total_blocks; ++b) { //iteriamo su ogni bit
+        ui8 byte = bitmap[b / 8]; //per ogni bit arrotondiamo all'apposito byte
+        ui8 bit  = (byte >> (b % 8)) & 1; // estrae il bit                                                  
+        if (!bit) {
+            free_blocks+=1;
+        }
+    }
+    return free_blocks;
+}
+
 // main moved to tests/test_main.c
