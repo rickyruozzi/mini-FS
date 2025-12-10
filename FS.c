@@ -198,27 +198,16 @@ int free_inode(struct filesystem *fs, inode_t inodeNum){
     return -1; //l'inode era già libero
 }
 
-struct inode inode_read(struct filesystem *fs, inode_t inodenum){ //stampa le informazioni di un determinato inode
-    if(fs->inodeTable[inodenum].isUsed==1){ //se l'inode è in uso
-        printf("Inode %u:\n", inodenum); //stampa il numero di inode
-        printf("    Dimensione del file: %u byte\n", fs->inodeTable[inodenum].size); //stampoa la dimensione del file
-        printf("    Blocchi diretti: "); //stampa i blocchi diretti con il ciclo che segue
-        for(ui32 j=0; j<INODE_DIRECT; j++){ //per ogni blocco diretto 
-            if(fs->inodeTable[inodenum].directBlocks[j] != 0){
-                printf("%u ", fs->inodeTable[inodenum].directBlocks[j]); //stampa il blocco diretto se non è 0
-            }
-        }
-        printf("\n");
-        if(fs->inodeTable[inodenum].indirectBlock != 0){
-            printf("  Blocco indiretto: %u\n", fs->inodeTable[inodenum].indirectBlock);
-        }
-        printf("  Creato il: %u\n", fs->inodeTable[inodenum].created_at);
-        printf("  Ultima modifica: %u\n", fs->inodeTable[inodenum].modified_at);
-        return fs->inodeTable[inodenum]; //ritorna l'inode letto
+int inode_read(struct filesystem *fs, inode_t inodenum, struct inode *out){
+    if (!fs || !out) return -1; //controlla il contenuto di fs e out, se non sono presenti restituisce un errore
+    if (inodenum >= fs->sb.inode_count) return -1; //se il numero di inode non è valido cade in errore
+    if (fs->inodeTable[inodenum].isUsed == 1){ //se l'inode è in uso
+        memcpy(out, &fs->inodeTable[inodenum], sizeof(struct inode)); //lo copia nel buffer
+        return 0; // successo
     }
-    struct inode emptyInode;
-    memset(&emptyInode, 0, sizeof(struct inode)); //dichiara un nuovo inode vuoto e inizializza tutti i suoi campi a 0 
-    return emptyInode; //poilo restituisce
+    // inode non in uso
+    memset(out, 0, sizeof(struct inode)); //altrimenti libera la memoria e restituisce un errore
+    return -1;
 }
 
 int inode_write(struct filesystem *fs, inode_t inodenum){
@@ -231,7 +220,7 @@ int inode_write(struct filesystem *fs, inode_t inodenum){
     return -1; //l'inode non è in uso
 }
 
-int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name, struct inode *result){
+int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name, struct inode *result, inode_t *result_num){
     int entries_per_block = BLOCK_SIZE / sizeof(struct dirEntry); //numero di entry contenute in un blocco
     char buffer[BLOCK_SIZE]; //creiamo un buffer che conterrà il blocco letto volta per volta
     struct dirEntry *entries = (struct dirEntry*)buffer; //eseguiamo il casting del buffer come nel metodo precedente
@@ -244,7 +233,8 @@ int dir_lookup(struct filesystem *fs, struct inode *dir_inode, const char* name,
         }
         for(ui32 j=0; j < entries_per_block; j++){ //scorriamo tutte le entries nel blocco che abbiamo scritto nel nostro buffer
             if(strncmp(entries[j].fname, name, FNAME_LEN)==0){ //compariamo il nome dell'entry con quello passato come parametro
-                *result = inode_read(fs, entries[j].inodeNum); //legge l'inode corrispondente al file trovato
+                if(inode_read(fs, entries[j].inodeNum, result) != 0) return -1; //leggiamo l'inode nel buffer result
+                if(result_num) *result_num = entries[j].inodeNum;
                 return 0; //file trovato con successo
             }
         }
@@ -355,17 +345,10 @@ int fs_create_file(struct filesystem *fs, inode_t dir_inode_num, const char *nam
 
 int fs_delete_file(struct filesystem *fs, struct inode *dir, const char *name){
     struct inode file_inode; //dichiariamo un inode che conterrà l'inode del file da eliminare
-    if(dir_lookup(fs, dir, name, &file_inode) != 0){ //controlliamo se il file esiste nella directory
+    inode_t inode_num = 0;
+    if(dir_lookup(fs, dir, name, &file_inode, &inode_num) != 0){ //controlliamo se il file esiste nella directory
         printf("File %s non trovato nella directory.\n", name);
         return -1; //file non trovato
-    }
-    //in file_inode ora dovrebbe essere scritto l'inode del file da eliminare
-    inode_t inode_num = 0; //variabile che conterrà il numero dell'inode del file da eliminare
-    for(inode_t i = 0; i < fs->sb.inode_count; i++){ //cerchiamo l'inode del file da eliminare
-        if(memcmp(&fs->inodeTable[i], &file_inode, sizeof(struct inode)) == 0){ //confrontiamo l'inode letto con quello nella tabella degli inode
-            inode_num = i; //se i due inode sono uguali salviamo il numero dell'inode in una variabile
-            break;
-        }
     }
     for(ui32 i = 0; i < INODE_DIRECT; i++){ //liberiamo tutti i blocchi diretti associati al file
         if(file_inode.directBlocks[i] != 0){ //eliminiamo i blocchi dell'inode
@@ -387,6 +370,30 @@ int fs_delete_file(struct filesystem *fs, struct inode *dir, const char *name){
     return 0;
 }
 
+int path_solver(struct filesystem *fs, const char *path,struct inode *result ){
+    //Dobbiamo iniziare dividendo il path in componenti
+    char temp[256]; //buffer che conterrà il path 
+    strcpy(temp, path); //copia del path nel buffer
+    inode_t current_inode = 0; //inode root
+    struct inode current; //struttura che conterrà gli inode
+    if(inode_read(fs, current_inode, &current) != 0){ //lettura dell'inode
+        return -1;
+    }
+    char *token = strtok(temp, "/"); //tokenization della stringa
+    while(token != NULL){ //finché ci sono token nel path
+        struct inode next; //struttura che conterrà il prossimo inode
+        inode_t next_num; //numero del prossimo inode
+        if(dir_lookup(fs, &current, token, &next, &next_num) != 0){ //cerchiamo il token della directory
+            //se lo troviamo next e next_nume conterranno ciò che devono contenere
+            return -1; //errore nella risoluzione del path
+        }
+        current_inode = next_num; //aggiornamento dell'inode corrente
+        current=next; //aggiornamento del numero di inode corrente
+        strtok(NULL,"/"); //passaggio al token successivo
+    }
+    *result=current; //salviamo nella variabile puntata da result l'inode corrente
+    return 0; 
+}
 
 //I test nel main sono stati generati dall'AI
 int main() {
@@ -428,7 +435,14 @@ int main() {
             inode_t new_inode = inode_alloc(fs);
             if (new_inode != (inode_t)-1) {
                 printf("Inode allocato: %u\n", new_inode);
-                inode_read(fs, new_inode);
+                {
+                    struct inode tmp;
+                    if (inode_read(fs, new_inode, &tmp) == 0) {
+                        printf("  inode.isUsed=%u size=%u\n", tmp.isUsed, tmp.size);
+                    } else {
+                        printf("  Errore nella lettura dell'inode %u\n", new_inode);
+                    }
+                }
             } else {
                 printf("Errore nell'allocazione dell'inode.\n");
             }
@@ -465,8 +479,9 @@ int main() {
 
                 // Lookup entry
                 struct inode result;
-                if (dir_lookup(fs, dir_inode, "testfile.txt", &result) == 0) {
-                    printf("Entry trovata: inode %u\n", result.isUsed ? dir_inode_num : 0);
+                inode_t found_num;
+                if (dir_lookup(fs, dir_inode, "testfile.txt", &result, &found_num) == 0) {
+                    printf("Entry trovata: inode %u\n", found_num);
                 } else {
                     printf("Entry non trovata.\n");
                 }
