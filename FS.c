@@ -407,4 +407,10 @@ int count_free_blocks(ui8 *bitmap, ui32 total_blocks){
     return free_blocks;
 }
 
+int count_free_bytes(ui8 *bitmap, ui32 total_blocks){
+    return count_free_blocks(bitmap, total_blocks) * 4096; //spazio libero in bytes
+}
+ int count_free_mbs(ui8 *bitmap, ui32 total_blocks){
+    return count_free_bytes(bitmap, total_blocks) / 1000;
+ }
 // main moved to tests/test_main.c
