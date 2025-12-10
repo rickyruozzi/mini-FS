@@ -388,14 +388,15 @@ int path_solver(struct filesystem *fs, const char *path,struct inode *result ){
             return -1; //errore nella risoluzione del path
         }
         current_inode = next_num; //aggiornamento dell'inode corrente
-        current=next; //aggiornamento del numero di inode corrente
-        strtok(NULL,"/"); //passaggio al token successivo
+        current = next; //aggiornamento del numero di inode corrente
+        token = strtok(NULL, "/"); //passaggio al token successivo 
     }
     *result=current; //salviamo nella variabile puntata da result l'inode corrente
     return 0; 
 }
 
 //I test nel main sono stati generati dall'AI
+#if 0
 int main() {
     // Test della creazione e apertura del file system
     printf("Inizializzazione del file system...\n");
@@ -529,3 +530,4 @@ int main() {
     }
     return 0;
 }
+#endif
